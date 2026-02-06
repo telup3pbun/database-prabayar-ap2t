@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Data Pelanggan Final (Export Status)</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #eef;
+            color: #333;
+            padding: 20px;
+        }
+        .input-container {
+            margin-bottom: 20px;
+        }
+        .input-container label {
+            display: block;
+            margin-bottom: 10px;
+            font-weight: bold;
+        }
+        .input-container input, .input-container textarea {
+            padding: 10px;
+            margin-bottom: 10px;
+            font-size: 16px;
+            box-sizing: border-box;
+            width: 100%;
+        }
+        .input-container button {
+            padding: 10px 15px;
+            font-size: 16px;
+            cursor: pointer;
+            margin-top: 10px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+            table-layout: auto;
+        }
+        th, td {
+            padding: 10px;
+            border: 1px solid #000;
+            text-align: center;
+            vertical-align: middle;
+        }
+        th {
+            background-color: #4CAF50;
+            color: white;
+        }
+        
+        /* STYLE GAMBAR (FULL FILL SESUAI REQUEST SEBELUMNYA) */
+        img {
+            width: 300px;
+            height: 300px;
+            border: 1px solid #ccc;
+            border-radius: 1px;
+            object-fit: fill; /* Memenuhi kotak sepenuhnya */
+            background-color: #f0f0f0; 
+            cursor: pointer;
+        }
+
+        .checkbox-container {
+            display: flex;
+            flex-direction: column;
+            text-align: left;
+        }
+        .login-form {
+            margin-bottom: 20px;
+        }
+        .login-form input {
+            width: auto;
+            margin-right: 10px;
+        }
+        .logout-btn {
+            background-color: #f44336;
+        }
+    </style>
+</head>
+<body>
+    <div id="login-container" class="login-form">
+        <label for="username">Username:</label>
+        <input type="text" id="username" placeholder="Username">
+        <label for="password">Password:</label>
+        <input type="password" id="password" placeholder="Password">
+        <button onclick="login()">Login</button>
+    </div>
+
+    <button id="logout-btn" class="logout-btn" onclick="logout()" style="display:none;">Logout</button>
+
+    <div class="input-container" id="data-container" style="display:none;">
+        <label for="id-input">Masukkan Data Pelanggan (format: <strong>IDPEL_NomorMeter_Arus_Tegangan_SisaPulsa</strong>, pisahkan dengan baris baru):</label>
+        <textarea id="id-input" rows="5" placeholder="Contoh:&#10;224400263727_32130276390_0.4_220_123"></textarea>
+        
+        <label for="year-input">Masukkan Tahun (BLTH):</label>
+        <input type="text" id="year-input" placeholder="Contoh: 202602">
+        
+        <button onclick="generateTable()">Tampilkan Data</button>
+        <button onclick="validateImages()" style="background-color: #2196F3;">Validasi Kelengkapan Foto</button>
+        <button onclick="exportToExcel()">Export to Excel</button>
+    </div>
+    
+    <div id="zoomModal" style="display:none; position:fixed; z-index:1000; left:0; top:0; width:100%; height:100%; background-color:rgba(0,0,0,0.8); text-align:center;">
+        <span onclick="closeZoomModal()" style="position:absolute; top:10px; right:20px; font-size:30px; color:white; cursor:pointer;">&times;</span>
+        <img id="modalImage" style="margin-top:5%; max-width:90%; max-height:90%; width:auto; height:auto; object-fit:contain; border-radius:10px; transition: transform 0.3s ease-in-out;">
+    </div>
+    
+    <table id="images-table" style="display:none;">
+        <thead>
+            <tr>
+                <th>Keterangan</th>
+                <th>IDPEL</th>
+                <th>Nomor Meter</th>
+                <th>Arus</th>
+                <th>Tegangan</th>
+                <th>Sisa Pulsa</th>
+                <th>Gambar Arus</th>
+                <th>Gambar Tegangan</th>
+                <th>Gambar Sisa Pulsa</th>
+                <th>Foto Persil</th>
+                <th>Input validasi</th>
+                <th>Status Validasi</th>
+            </tr>
+        </thead>
+        <tbody>
+        </tbody>
+    </table>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.17.5/xlsx.full.min.js"></script>
+
+    <script>
+        const keteranganList = [
+            "NORMAL", "SEGEL COVER HILANG", "ANOMALI TEGANGAN",
+            "KWH BLANK", "KWH MINUS", "KWH RUSAK",
+            "KWH ERROR", "KWH PERIKSA", 
+            "KWH BURAM/FOTO BLUR", "KWH TINGGI", 
+            "KWH DALAM BANGUNAN", "KWH HILANG",
+        ];
+
+        function login() {
+            const username = document.getElementById("username").value;
+            const password = document.getElementById("password").value;
+
+            if (username === "x" && password === "x") {
+                document.getElementById("login-container").style.display = "none";
+                document.getElementById("data-container").style.display = "block";
+                document.getElementById("images-table").style.display = "table";
+                document.getElementById("logout-btn").style.display = "inline-block";
+            } else {
+                alert("Invalid username or password!");
+            }
+        }
+
+        function logout() {
+            document.getElementById("data-container").style.display = "none";
+            document.getElementById("images-table").style.display = "none";
+            document.getElementById("logout-btn").style.display = "none";
+            document.getElementById("login-container").style.display = "block";
+        }
+        
+        function openZoomModal(imgSrc) {
+            const modal = document.getElementById('zoomModal');
+            const modalImg = document.getElementById('modalImage');
+            modal.style.display = 'block';
+            modalImg.src = imgSrc;
+            modalImg.style.transform = 'scale(1)'; 
+            modalImg.style.cursor = 'zoom-in';
+            
+            let isZoomed = false;
+            modalImg.onclick = function() {
+                if(isZoomed) {
+                     modalImg.style.transform = 'scale(1)';
+                     isZoomed = false;
+                     modalImg.style.cursor = 'zoom-in';
+                } else {
+                     modalImg.style.transform = 'scale(2.5)';
+                     isZoomed = true;
+                     modalImg.style.cursor = 'zoom-out';
+                }
+            }
+        }
+        
+        function closeZoomModal() {
+            document.getElementById('zoomModal').style.display = 'none';
+        }
+
+        function generateTable() {
+            const inputs = document.getElementById('id-input').value.trim().split('\n').map(input => input.trim());
+            const year = document.getElementById('year-input').value.trim();
+            const tbody = document.getElementById('images-table').getElementsByTagName('tbody')[0];
+            tbody.innerHTML = '';
+
+            inputs.forEach(input => {
+                if (input && year) {
+                    const parts = input.split('_');
+                    
+                    if (parts.length < 5) {
+                         alert(`Format input tidak valid (Kurang Data): ${input}`);
+                         return;
+                    }
+
+                    const idpel = parts[0];
+                    const nomorMeter = parts[1];
+                    const arus = parts[2];
+                    const tegangan = parts[3];
+                    const sisaPulsa = parts[4];
+                    
+                    const row = document.createElement('tr');
+
+                    // 0. Keterangan
+                    const keteranganCell = document.createElement('td');
+                    const checkboxContainer = document.createElement('div');
+                    checkboxContainer.className = 'checkbox-container';
+
+                    // 1. ID Pelanggan
+                    const idCell = document.createElement('td');
+                    idCell.textContent = idpel;
+                    idCell.className = 'id-cell';
+
+                    keteranganList.forEach(keterangan => {
+                        const checkboxLabel = document.createElement('label');
+                        const checkbox = document.createElement('input');
+                        checkbox.type = 'checkbox';
+                        checkbox.value = keterangan;
+                        checkbox.onclick = function() {
+                            const checkedBoxes = Array.from(checkboxContainer.querySelectorAll('input:checked')).map(cb => cb.value);
+                            if (checkedBoxes.length > 0) {
+                                idCell.textContent = `${idpel};${checkedBoxes.join(';')}`;
+                            } else {
+                                idCell.textContent = idpel;
+                            }
+                        };
+                        checkboxLabel.appendChild(checkbox);
+                        checkboxLabel.appendChild(document.createTextNode(keterangan));
+                        checkboxContainer.appendChild(checkboxLabel);
+                    });
+
+                    keteranganCell.appendChild(checkboxContainer);
+                    row.appendChild(keteranganCell);
+                    row.appendChild(idCell);
+
+                    // 2-5 Data
+                    const noMeterCell = document.createElement('td');
+                    noMeterCell.textContent = nomorMeter;
+                    row.appendChild(noMeterCell);
+
+                    const arusCell = document.createElement('td');
+                    arusCell.textContent = arus;
+                    row.appendChild(arusCell);
+
+                    const teganganCell = document.createElement('td');
+                    teganganCell.textContent = tegangan;
+                    row.appendChild(teganganCell);
+
+                    const sisaPulsaCell = document.createElement('td');
+                    sisaPulsaCell.textContent = sisaPulsa;
+                    row.appendChild(sisaPulsaCell);
+
+                    // 6-8 Images
+                    const arusImgCell = document.createElement('td');
+                    const arusImg = document.createElement('img');
+                    const urlArus = `https://ap2t.pln.co.id/acmt/DisplayBlobServlet6?idpel=${idpel}&nomor_meter=${nomorMeter}&fotoke=null&blth=${year}&isPhoto=null`;
+                    arusImg.src = urlArus;
+                    arusImg.alt = `Gambar Arus ${idpel}`;
+                    arusImg.onclick = () => openZoomModal(urlArus);
+                    arusImgCell.appendChild(arusImg);
+                    row.appendChild(arusImgCell);
+
+                    const teganganImgCell = document.createElement('td');
+                    const teganganImg = document.createElement('img');
+                    const urlTegangan = `https://ap2t.pln.co.id/acmt/DisplayBlobServlet5?idpel=${idpel}&nomor_meter=${nomorMeter}&fotoke=null&blth=${year}&isPhoto=null`;
+                    teganganImg.src = urlTegangan;
+                    teganganImg.alt = `Gambar Tegangan ${idpel}`;
+                    teganganImg.onclick = () => openZoomModal(urlTegangan);
+                    teganganImgCell.appendChild(teganganImg);
+                    row.appendChild(teganganImgCell);
+
+                    const pulsaImgCell = document.createElement('td');
+                    const pulsaImg = document.createElement('img');
+                    const urlPulsa = `https://ap2t.pln.co.id/acmt/DisplayBlobServlet4?idpel=${idpel}&nomor_meter=${nomorMeter}&fotoke=null&blth=${year}&isPhoto=null`;
+                    pulsaImg.src = urlPulsa;
+                    pulsaImg.alt = `Gambar Sisa Pulsa ${idpel}`;
+                    pulsaImg.onclick = () => openZoomModal(urlPulsa);
+                    pulsaImgCell.appendChild(pulsaImg);
+                    row.appendChild(pulsaImgCell);
+
+                    // 9 Foto Persil
+                    const urlPersil = `https://ap2t.pln.co.id/acmt/DisplayBlobServlet7?idpel=${idpel}&unitup=`; 
+                    const persilImgCell = document.createElement('td');
+                    const persilImg = document.createElement('img');
+                    persilImg.src = urlPersil;
+                    persilImg.alt = `Foto Persil ${idpel}`;
+                    persilImg.onclick = () => openZoomModal(urlPersil);
+                    persilImgCell.appendChild(persilImg);
+                    row.appendChild(persilImgCell);
+
+                    // 10 Input
+                    const textInputCell = document.createElement('td');
+                    const textInput = document.createElement('input');
+                    textInput.type = 'text';
+                    textInput.placeholder = "Input text here";
+                    textInputCell.appendChild(textInput);
+                    row.appendChild(textInputCell);
+
+                    tbody.appendChild(row);
+                }
+            });
+        }
+
+        function exportToExcel() {
+            // Pastikan validasi dijalankan dulu agar data kolom status ada (opsional, tapi disarankan)
+            validateImages();
+
+            const table = document.getElementById('images-table');
+            const rows = table.querySelectorAll('tbody tr');
+            const data = [];
+
+            // UPDATE: Menambahkan Header "Status Validasi"
+            const header = ["Keterangan", "IDPEL", "Nomor Meter", "Arus", "Tegangan", "Sisa Pulsa", "Gambar Arus", "Gambar Tegangan", "Gambar Sisa Pulsa", "Foto Persil", "Text Input", "Status Validasi"];
+
+            rows.forEach(row => {
+                const rowData = [];
+                // Query semua 'td' di baris tersebut
+                const cells = row.querySelectorAll('td');
+                
+                // Pastikan loop mencakup semua kolom (termasuk index 11 jika ada)
+                cells.forEach((cell, index) => {
+                    if (index === 10) { 
+                        // Kolom Text Input
+                        rowData.push(cell.querySelector('input') ? cell.querySelector('input').value : "");
+                    } else if (index === 0) { 
+                        // Kolom Checkbox
+                        const checkboxes = cell.querySelectorAll('input[type="checkbox"]');
+                        const checkedValues = [];
+                        checkboxes.forEach(checkbox => {
+                            if (checkbox.checked) {
+                                checkedValues.push(checkbox.value);
+                            }
+                        });
+                        rowData.push(checkedValues.join(', '));
+                    } else if (index === 11) {
+                        // UPDATE: Kolom Status Validasi (Sekarang diambil teksnya)
+                        rowData.push(cell.textContent.trim());
+                    } else {
+                        // Kolom Biasa
+                        rowData.push(cell.textContent.trim());
+                    }
+                });
+                data.push(rowData);
+            });
+
+            const wb = XLSX.utils.book_new();
+            const ws = XLSX.utils.aoa_to_sheet([header].concat(data));
+            XLSX.utils.book_append_sheet(wb, ws, "Data Pelanggan");
+            XLSX.writeFile(wb, 'Data_Pelanggan.xlsx');
+        }
+
+        function validateImages() {
+            const rows = document.querySelectorAll('#images-table tbody tr');
+            
+            rows.forEach(row => {
+                const arusImg = row.cells[6].querySelector('img');
+                const teganganImg = row.cells[7].querySelector('img');
+                const pulsaImg = row.cells[8].querySelector('img');
+                
+                let statusText = "Lengkap";
+                
+                if (!arusImg || arusImg.naturalWidth === 0 || arusImg.naturalHeight === 0) {
+                    statusText = "Gambar arus tidak ada";
+                }
+                if (!teganganImg || teganganImg.naturalWidth === 0 || teganganImg.naturalHeight === 0) {
+                    statusText = statusText === "Lengkap" ? "Gambar tegangan tidak ada" : statusText + ", gambar tegangan tidak ada";
+                }
+                if (!pulsaImg || pulsaImg.naturalWidth === 0 || pulsaImg.naturalHeight === 0) {
+                    statusText = statusText === "Lengkap" ? "Gambar sisa pulsa tidak ada" : statusText + ", gambar sisa pulsa tidak ada";
+                }
+                
+                let statusCell = row.cells[11]; 
+                if (!statusCell) {
+                    statusCell = document.createElement('td');
+                    row.appendChild(statusCell);
+                }
+                statusCell.textContent = statusText;
+                
+                if (statusText !== "Lengkap") {
+                    statusCell.style.color = "red";
+                    statusCell.style.fontWeight = "bold";
+                } else {
+                    statusCell.style.color = "green";
+                }
+            });
+        }
+    </script>
+</body>
+</html>
